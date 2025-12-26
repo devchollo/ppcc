@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PPCC - Bouncing Board</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            background: #1a1a1a;
+        }
+
+        #canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 24px;
+            text-align: center;
+            z-index: 2000;
+        }
+
+        #loading.hidden {
+            display: none;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            margin: 20px auto;
+            border: 5px solid rgba(255, 255, 255, 0.3);
+            border-top: 5px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .progress {
+            margin-top: 15px;
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        #datetime {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+        }
+
+        #leaderboard {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            min-width: 250px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            transition: all 0.3s ease;
+        }
+
+        #leaderboard.collapsed {
+            padding: 10px 20px;
+            min-width: auto;
+        }
+
+        #leaderboard h3 {
+            margin: 0 0 15px 0;
+            font-size: 20px;
+            text-align: center;
+            border-bottom: 2px solid white;
+            padding-bottom: 10px;
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        #leaderboard.collapsed h3 {
+            margin: 0;
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .toggle-icon {
+            font-size: 16px;
+            transition: transform 0.3s ease;
+        }
+
+        #leaderboard.collapsed .toggle-icon {
+            transform: rotate(180deg);
+        }
+
+        .leaderboard-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            font-size: 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .leaderboard-item:last-child {
+            border-bottom: none;
+        }
+
+        .leaderboard-item .rank {
+            font-weight: bold;
+            margin-right: 10px;
+        }
+
+        .leaderboard-item .name {
+            flex: 1;
+        }
+
+        .leaderboard-item .bounces {
+            font-weight: bold;
+            color: #4CAF50;
+        }
+
+        #leaderboard-content {
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+
+        #leaderboard.collapsed #leaderboard-content {
+            max-height: 0;
+            opacity: 0;
+        }
+
+        #connection-status {
+            position: fixed;
+            top: 60px;
+            left: 20px;
+            color: white;
+            font-size: 14px;
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 5px;
+            z-index: 1000;
+        }
+
+        .status-online {
+            color: #4CAF50;
+        }
+
+        .status-offline {
+            color: #f44336;
+        }
+    </style>
+</head>
+<body>
+    <div id="datetime"></div>
+    <div id="connection-status">
+        <span id="status-text">Connecting...</span>
+    </div>
+    <div id="leaderboard">
+        <h3 onclick="toggleLeaderboard()">
+            <span>🏆 Bounce Leaderboard</span>
+            <span class="toggle-icon">▼</span>
+        </h3>
+        <div id="leaderboard-content"></div>
+    </div>
+    <div id="loading">
+        <div>Loading images...</div>
+        <div class="spinner"></div>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const loadingEl = document.getElementById('loading');
+        const statusText = document.getElementById('status-text');
+
+        // API endpoint - change this to your Vercel URL in production
+        const API_BASE = window.location.hostname === 'localhost' 
+            ? 'http://localhost:3000' 
+            : '';
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        const bgImageUrl = 'bg.jfif';
+        const overlayColor = '#000000';
+        const overlayOpacity = 0.5;
+
+        const colleaguesData = [
+            { name: 'Kent', images: ['kent.jpg'] },
+            { name: 'Rain', images: ['https://i.pravatar.cc/150?img=4'] },
+            { name: 'Dos', images: ['https://i.pravatar.cc/150?img=6'] },
+            { name: 'Khayie', images: ['khayie.jpg'] },
+            { name: 'Shane', images: ['shane.png'] },
+            { name: 'Clyde Y', images: ['https://i.pravatar.cc/150?img=10'] },
+            { name: 'Anagen', images: ['nagen.jpg'] },
+            { name: 'Clyde C', images: ['cc.jpg'] },
+            { name: 'Eve', images: ['https://i.pravatar.cc/150?img=10'] },
+            { name: 'JL', images: ['jl.jpg', 'jl2.png'] },
+            { name: 'James', images: ['james.jpg', 'james2.jfif'] },
+            { name: 'Clark', images: ['https://i.pravatar.cc/150?img=10'] },
+            { name: 'Star', images: ['https://i.pravatar.cc/150?img=10'] },
+            { name: 'Coco', images: ['https://i.pravatar.cc/150?img=10'] },
+            { name: 'Japh', images: ['https://i.pravatar.cc/150?img=10'] },
+            { name: 'JM', images: ['jm.jpg', 'jm2.jpg', 'bg2.jpg'] },
+            { name: 'Sol', images: ['https://i.pravatar.cc/150?img=10'] },
+            { name: 'Harvey', images: ['harvey.jpg'] }
+        ];
+
+        let bgImage = null;
+        let circles = [];
+        let preloadedImages = {};
+        let leaderboardCache = {};
+        let isOnline = false;
+
+        // API functions
+        async function fetchLeaderboard() {
+            try {
+                const response = await fetch(`${API_BASE}/api/leaderboard`);
+                if (response.ok) {
+                    const data = await response.json();
+                    leaderboardCache = data;
+                    updateConnectionStatus(true);
+                    return data;
+                }
+                throw new Error('Failed to fetch leaderboard');
+            } catch (error) {
+                console.error('Error fetching leaderboard:', error);
+                updateConnectionStatus(false);
+                return leaderboardCache;
+            }
+        }
+
+        async function incrementBounce(name) {
+            try {
+                const response = await fetch(`${API_BASE}/api/bounce`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ name })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        leaderboardCache[name] = data.bounces;
+                        updateConnectionStatus(true);
+                    }
+                    return data;
+                }
+                throw new Error('Failed to increment bounce');
+            } catch (error) {
+                console.error('Error incrementing bounce:', error);
+                updateConnectionStatus(false);
+                // Fallback to local increment
+                if (leaderboardCache[name] !== undefined) {
+                    leaderboardCache[name]++;
+                }
+            }
+        }
+
+        function updateConnectionStatus(online) {
+            isOnline = online;
+            statusText.textContent = online ? '🟢 Connected' : '🔴 Offline';
+            statusText.className = online ? 'status-online' : 'status-offline';
+        }
+
+        class Circle {
+            constructor(colleague, x, y) {
+                this.colleague = colleague;
+                this.colleague.currentImageIndex = this.colleague.currentImageIndex || 0;
+                this.x = x || Math.random() * (canvas.width - 100) + 50;
+                this.y = y || Math.random() * (canvas.height - 100) + 50;
+                this.radius = 50;
+                this.vx = (Math.random() - 0.5) * 4;
+                this.vy = (Math.random() - 0.5) * 4;
+            }
+
+            getCurrentImage() {
+                const imageUrl = this.colleague.images[this.colleague.currentImageIndex];
+                return preloadedImages[imageUrl];
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+
+                if (this.x - this.radius < 0 || this.x + this.radius > canvas.width) {
+                    this.vx *= -1;
+                    this.x = Math.max(this.radius, Math.min(canvas.width - this.radius, this.x));
+                }
+
+                if (this.y - this.radius < 0 || this.y + this.radius > canvas.height) {
+                    this.vy *= -1;
+                    this.y = Math.max(this.radius, Math.min(canvas.height - this.radius, this.y));
+                }
+            }
+
+            draw() {
+                const img = this.getCurrentImage();
+                if (img && img.complete) {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                    ctx.closePath();
+                    ctx.clip();
+                    
+                    ctx.drawImage(
+                        img,
+                        this.x - this.radius,
+                        this.y - this.radius,
+                        this.radius * 2,
+                        this.radius * 2
+                    );
+                    
+                    ctx.restore();
+                    
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+
+                    ctx.fillStyle = 'white';
+                    ctx.font = 'bold 14px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'top';
+                    ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+                    ctx.shadowBlur = 4;
+                    ctx.shadowOffsetX = 2;
+                    ctx.shadowOffsetY = 2;
+                    ctx.fillText(this.colleague.name, this.x, this.y + this.radius + 8);
+                    ctx.shadowColor = 'transparent';
+                    ctx.shadowBlur = 0;
+                    ctx.shadowOffsetX = 0;
+                    ctx.shadowOffsetY = 0;
+                }
+            }
+
+            checkCollision(other) {
+                const dx = this.x - other.x;
+                const dy = this.y - other.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                return distance < this.radius + other.radius;
+            }
+
+            cycleImage() {
+                if (this.colleague.images.length > 1) {
+                    this.colleague.currentImageIndex = (this.colleague.currentImageIndex + 1) % this.colleague.images.length;
+                }
+                // Send bounce to server
+                incrementBounce(this.colleague.name);
+            }
+        }
+
+        function preloadAllImages() {
+            return new Promise((resolve) => {
+                const allImageUrls = new Set();
+                allImageUrls.add(bgImageUrl);
+                colleaguesData.forEach(data => {
+                    data.images.forEach(url => allImageUrls.add(url));
+                });
+
+                const imagesToLoad = Array.from(allImageUrls);
+                let loadedCount = 0;
+
+                if (imagesToLoad.length === 0) {
+                    resolve();
+                    return;
+                }
+
+                imagesToLoad.forEach(url => {
+                    const img = new Image();
+                    img.onload = () => {
+                        loadedCount++;
+                        if (loadedCount === imagesToLoad.length) {
+                            resolve();
+                        }
+                    };
+                    img.onerror = () => {
+                        console.warn(`Failed to load image: ${url}`);
+                        loadedCount++;
+                        if (loadedCount === imagesToLoad.length) {
+                            resolve();
+                        }
+                    };
+                    
+                    if (url === bgImageUrl) {
+                        bgImage = img;
+                    }
+                    
+                    preloadedImages[url] = img;
+                    img.src = url;
+                });
+            });
+        }
+
+        function initializeColleagues() {
+            colleaguesData.forEach(data => {
+                circles.push(new Circle(data));
+            });
+        }
+
+        function updateDateTime() {
+            const now = new Date();
+            const phTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+            
+            const hours = phTime.getHours();
+            const minutes = phTime.getMinutes().toString().padStart(2, '0');
+            const seconds = phTime.getSeconds().toString().padStart(2, '0');
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            const displayHours = hours % 12 || 12;
+            
+            const month = (phTime.getMonth() + 1).toString().padStart(2, '0');
+            const day = phTime.getDate().toString().padStart(2, '0');
+            const year = phTime.getFullYear();
+            
+            document.getElementById('datetime').textContent = 
+                `${month}/${day}/${year} ${displayHours}:${minutes}:${seconds} ${ampm}`;
+        }
+
+        function updateLeaderboard() {
+            const sorted = colleaguesData.map(c => ({
+                name: c.name,
+                bounces: leaderboardCache[c.name] || 0
+            })).sort((a, b) => b.bounces - a.bounces);
+            
+            const leaderboardContent = document.getElementById('leaderboard-content');
+            
+            leaderboardContent.innerHTML = sorted.map((colleague, index) => `
+                <div class="leaderboard-item">
+                    <span class="rank">#${index + 1}</span>
+                    <span class="name">${colleague.name}</span>
+                    <span class="bounces">${colleague.bounces}</span>
+                </div>
+            `).join('');
+        }
+
+        function toggleLeaderboard() {
+            const leaderboard = document.getElementById('leaderboard');
+            leaderboard.classList.toggle('collapsed');
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (bgImage && bgImage.complete) {
+                ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+            }
+
+            ctx.fillStyle = overlayColor;
+            ctx.globalAlpha = overlayOpacity;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.globalAlpha = 1;
+
+            circles.forEach(circle => circle.update());
+
+            for (let i = 0; i < circles.length; i++) {
+                for (let j = i + 1; j < circles.length; j++) {
+                    if (circles[i].checkCollision(circles[j])) {
+                        circles[i].cycleImage();
+                        circles[j].cycleImage();
+
+                        const dx = circles[j].x - circles[i].x;
+                        const dy = circles[j].y - circles[i].y;
+                        const angle = Math.atan2(dy, dx);
+                        
+                        const speed1 = Math.sqrt(circles[i].vx ** 2 + circles[i].vy ** 2);
+                        const speed2 = Math.sqrt(circles[j].vx ** 2 + circles[j].vy ** 2);
+                        
+                        circles[i].vx = -Math.cos(angle) * speed1;
+                        circles[i].vy = -Math.sin(angle) * speed1;
+                        circles[j].vx = Math.cos(angle) * speed2;
+                        circles[j].vy = Math.sin(angle) * speed2;
+
+                        const overlap = circles[i].radius + circles[j].radius - Math.sqrt(dx * dx + dy * dy);
+                        circles[i].x -= Math.cos(angle) * overlap / 2;
+                        circles[i].y -= Math.sin(angle) * overlap / 2;
+                        circles[j].x += Math.cos(angle) * overlap / 2;
+                        circles[j].y += Math.sin(angle) * overlap / 2;
+                    }
+                }
+            }
+
+            circles.forEach(circle => circle.draw());
+            requestAnimationFrame(animate);
+        }
+
+        // Initialize
+        setInterval(updateDateTime, 1000);
+        updateDateTime();
+
+        // Fetch leaderboard from server every 2 seconds
+        setInterval(() => {
+            fetchLeaderboard().then(updateLeaderboard);
+        }, 2000);
+
+        // Preload images and start
+        Promise.all([
+            preloadAllImages(),
+            fetchLeaderboard()
+        ]).then(() => {
+            loadingEl.classList.add('hidden');
+            initializeColleagues();
+            updateLeaderboard();
+            animate();
+        });
+    </script>
+</body>
+</html>
