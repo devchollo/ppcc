@@ -53,12 +53,6 @@
             100% { transform: rotate(360deg); }
         }
 
-        .progress {
-            margin-top: 15px;
-            font-size: 16px;
-            color: rgba(255, 255, 255, 0.8);
-        }
-
         #datetime {
             position: fixed;
             top: 20px;
@@ -78,7 +72,7 @@
             color: white;
             padding: 20px;
             border-radius: 10px;
-            min-width: 250px;
+            min-width: 280px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
             z-index: 1000;
             transition: all 0.3s ease;
@@ -120,6 +114,7 @@
         .leaderboard-item {
             display: flex;
             justify-content: space-between;
+            align-items: center;
             padding: 8px 0;
             font-size: 16px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.2);
@@ -141,6 +136,12 @@
         .leaderboard-item .bounces {
             font-weight: bold;
             color: #4CAF50;
+            margin-right: 10px;
+        }
+
+        .leaderboard-item .wins {
+            color: #FFD700;
+            font-size: 14px;
         }
 
         #leaderboard-content {
@@ -172,6 +173,64 @@
         .status-offline {
             color: #f44336;
         }
+
+        #winner-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 3000;
+        }
+
+        #winner-modal.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            max-width: 500px;
+        }
+
+        .modal-content h2 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .modal-content .trophy {
+            font-size: 80px;
+            margin-bottom: 20px;
+        }
+
+        .modal-content .winner-name {
+            font-size: 32px;
+            font-weight: bold;
+            color: #4CAF50;
+            margin-bottom: 30px;
+        }
+
+        .modal-content button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 18px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .modal-content button:hover {
+            background: #45a049;
+        }
     </style>
 </head>
 <body>
@@ -190,6 +249,15 @@
         <div>Loading images...</div>
         <div class="spinner"></div>
     </div>
+    <div id="winner-modal">
+        <div class="modal-content">
+            <div class="trophy">🎉</div>
+            <h2>Winner!</h2>
+            <div class="winner-name" id="winner-name"></div>
+            <p style="font-size: 18px; color: #666; margin-bottom: 30px;">reached 999 bounces!</p>
+            <button onclick="continueGame()">Continue Playing</button>
+        </div>
+    </div>
     <canvas id="canvas"></canvas>
 
     <script>
@@ -197,11 +265,11 @@
         const ctx = canvas.getContext('2d');
         const loadingEl = document.getElementById('loading');
         const statusText = document.getElementById('status-text');
+        const winnerModal = document.getElementById('winner-modal');
+        const winnerNameEl = document.getElementById('winner-name');
 
-        // API endpoint - change this to your Vercel URL in production
-        const API_BASE = window.location.hostname === 'localhost' 
-            ? 'http://localhost:3000' 
-            : '';
+        // CHANGE THIS TO YOUR RENDER API URL
+        const API_BASE = 'https://your-app-name.onrender.com';
 
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
@@ -211,36 +279,32 @@
             canvas.height = window.innerHeight;
         });
 
-        const bgImageUrl = 'bg.jfif';
-        const overlayColor = '#000000';
-        const overlayOpacity = 0.5;
-
         const colleaguesData = [
-            { name: 'Kent', images: ['kent.jpg'] },
+            { name: 'Kent', images: ['https://i.pravatar.cc/150?img=1'] },
             { name: 'Rain', images: ['https://i.pravatar.cc/150?img=4'] },
             { name: 'Dos', images: ['https://i.pravatar.cc/150?img=6'] },
-            { name: 'Khayie', images: ['khayie.jpg'] },
-            { name: 'Shane', images: ['shane.png'] },
+            { name: 'Khayie', images: ['https://i.pravatar.cc/150?img=8'] },
+            { name: 'Shane', images: ['https://i.pravatar.cc/150?img=9'] },
             { name: 'Clyde Y', images: ['https://i.pravatar.cc/150?img=10'] },
-            { name: 'Anagen', images: ['nagen.jpg'] },
-            { name: 'Clyde C', images: ['cc.jpg'] },
-            { name: 'Eve', images: ['https://i.pravatar.cc/150?img=10'] },
-            { name: 'JL', images: ['jl.jpg', 'jl2.png'] },
-            { name: 'James', images: ['james.jpg', 'james2.jfif'] },
-            { name: 'Clark', images: ['https://i.pravatar.cc/150?img=10'] },
-            { name: 'Star', images: ['https://i.pravatar.cc/150?img=10'] },
-            { name: 'Coco', images: ['https://i.pravatar.cc/150?img=10'] },
-            { name: 'Japh', images: ['https://i.pravatar.cc/150?img=10'] },
-            { name: 'JM', images: ['jm.jpg', 'jm2.jpg', 'bg2.jpg'] },
-            { name: 'Sol', images: ['https://i.pravatar.cc/150?img=10'] },
-            { name: 'Harvey', images: ['harvey.jpg'] }
+            { name: 'Anagen', images: ['https://i.pravatar.cc/150?img=11'] },
+            { name: 'Clyde C', images: ['https://i.pravatar.cc/150?img=12'] },
+            { name: 'Eve', images: ['https://i.pravatar.cc/150?img=13'] },
+            { name: 'JL', images: ['https://i.pravatar.cc/150?img=14', 'https://i.pravatar.cc/150?img=15'] },
+            { name: 'James', images: ['https://i.pravatar.cc/150?img=16', 'https://i.pravatar.cc/150?img=17'] },
+            { name: 'Clark', images: ['https://i.pravatar.cc/150?img=18'] },
+            { name: 'Star', images: ['https://i.pravatar.cc/150?img=19'] },
+            { name: 'Coco', images: ['https://i.pravatar.cc/150?img=20'] },
+            { name: 'Japh', images: ['https://i.pravatar.cc/150?img=21'] },
+            { name: 'JM', images: ['https://i.pravatar.cc/150?img=22', 'https://i.pravatar.cc/150?img=23'] },
+            { name: 'Sol', images: ['https://i.pravatar.cc/150?img=24'] },
+            { name: 'Harvey', images: ['https://i.pravatar.cc/150?img=25'] }
         ];
 
-        let bgImage = null;
         let circles = [];
         let preloadedImages = {};
         let leaderboardCache = {};
         let isOnline = false;
+        let isPaused = false;
 
         // API functions
         async function fetchLeaderboard() {
@@ -273,8 +337,16 @@
                 if (response.ok) {
                     const data = await response.json();
                     if (data.success) {
-                        leaderboardCache[name] = data.bounces;
+                        leaderboardCache[name] = {
+                            bounces: data.bounces,
+                            wins: data.wins
+                        };
                         updateConnectionStatus(true);
+
+                        // Check if winner
+                        if (data.winner) {
+                            showWinner(name);
+                        }
                     }
                     return data;
                 }
@@ -282,11 +354,19 @@
             } catch (error) {
                 console.error('Error incrementing bounce:', error);
                 updateConnectionStatus(false);
-                // Fallback to local increment
-                if (leaderboardCache[name] !== undefined) {
-                    leaderboardCache[name]++;
-                }
             }
+        }
+
+        function showWinner(name) {
+            isPaused = true;
+            winnerNameEl.textContent = name;
+            winnerModal.classList.add('show');
+        }
+
+        function continueGame() {
+            isPaused = false;
+            winnerModal.classList.remove('show');
+            fetchLeaderboard().then(updateLeaderboard);
         }
 
         function updateConnectionStatus(online) {
@@ -298,7 +378,7 @@
         class Circle {
             constructor(colleague, x, y) {
                 this.colleague = colleague;
-                this.colleague.currentImageIndex = this.colleague.currentImageIndex || 0;
+                this.colleague.currentImageIndex = 0;
                 this.x = x || Math.random() * (canvas.width - 100) + 50;
                 this.y = y || Math.random() * (canvas.height - 100) + 50;
                 this.radius = 50;
@@ -312,6 +392,8 @@
             }
 
             update() {
+                if (isPaused) return;
+
                 this.x += this.vx;
                 this.y += this.vy;
 
@@ -378,7 +460,6 @@
                 if (this.colleague.images.length > 1) {
                     this.colleague.currentImageIndex = (this.colleague.currentImageIndex + 1) % this.colleague.images.length;
                 }
-                // Send bounce to server
                 incrementBounce(this.colleague.name);
             }
         }
@@ -386,7 +467,6 @@
         function preloadAllImages() {
             return new Promise((resolve) => {
                 const allImageUrls = new Set();
-                allImageUrls.add(bgImageUrl);
                 colleaguesData.forEach(data => {
                     data.images.forEach(url => allImageUrls.add(url));
                 });
@@ -415,10 +495,6 @@
                         }
                     };
                     
-                    if (url === bgImageUrl) {
-                        bgImage = img;
-                    }
-                    
                     preloadedImages[url] = img;
                     img.src = url;
                 });
@@ -433,17 +509,15 @@
 
         function updateDateTime() {
             const now = new Date();
-            const phTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-            
-            const hours = phTime.getHours();
-            const minutes = phTime.getMinutes().toString().padStart(2, '0');
-            const seconds = phTime.getSeconds().toString().padStart(2, '0');
+            const hours = now.getHours();
+            const minutes = now.getMinutes().toString().padStart(2, '0');
+            const seconds = now.getSeconds().toString().padStart(2, '0');
             const ampm = hours >= 12 ? 'PM' : 'AM';
             const displayHours = hours % 12 || 12;
             
-            const month = (phTime.getMonth() + 1).toString().padStart(2, '0');
-            const day = phTime.getDate().toString().padStart(2, '0');
-            const year = phTime.getFullYear();
+            const month = (now.getMonth() + 1).toString().padStart(2, '0');
+            const day = now.getDate().toString().padStart(2, '0');
+            const year = now.getFullYear();
             
             document.getElementById('datetime').textContent = 
                 `${month}/${day}/${year} ${displayHours}:${minutes}:${seconds} ${ampm}`;
@@ -452,7 +526,8 @@
         function updateLeaderboard() {
             const sorted = colleaguesData.map(c => ({
                 name: c.name,
-                bounces: leaderboardCache[c.name] || 0
+                bounces: leaderboardCache[c.name]?.bounces || 0,
+                wins: leaderboardCache[c.name]?.wins || 0
             })).sort((a, b) => b.bounces - a.bounces);
             
             const leaderboardContent = document.getElementById('leaderboard-content');
@@ -462,6 +537,7 @@
                     <span class="rank">#${index + 1}</span>
                     <span class="name">${colleague.name}</span>
                     <span class="bounces">${colleague.bounces}</span>
+                    <span class="wins">🏆 ${colleague.wins}</span>
                 </div>
             `).join('');
         }
@@ -472,42 +548,36 @@
         }
 
         function animate() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            if (bgImage && bgImage.complete) {
-                ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
-            }
-
-            ctx.fillStyle = overlayColor;
-            ctx.globalAlpha = overlayOpacity;
+            ctx.fillStyle = '#1a1a1a';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.globalAlpha = 1;
 
             circles.forEach(circle => circle.update());
 
-            for (let i = 0; i < circles.length; i++) {
-                for (let j = i + 1; j < circles.length; j++) {
-                    if (circles[i].checkCollision(circles[j])) {
-                        circles[i].cycleImage();
-                        circles[j].cycleImage();
+            if (!isPaused) {
+                for (let i = 0; i < circles.length; i++) {
+                    for (let j = i + 1; j < circles.length; j++) {
+                        if (circles[i].checkCollision(circles[j])) {
+                            circles[i].cycleImage();
+                            circles[j].cycleImage();
 
-                        const dx = circles[j].x - circles[i].x;
-                        const dy = circles[j].y - circles[i].y;
-                        const angle = Math.atan2(dy, dx);
-                        
-                        const speed1 = Math.sqrt(circles[i].vx ** 2 + circles[i].vy ** 2);
-                        const speed2 = Math.sqrt(circles[j].vx ** 2 + circles[j].vy ** 2);
-                        
-                        circles[i].vx = -Math.cos(angle) * speed1;
-                        circles[i].vy = -Math.sin(angle) * speed1;
-                        circles[j].vx = Math.cos(angle) * speed2;
-                        circles[j].vy = Math.sin(angle) * speed2;
+                            const dx = circles[j].x - circles[i].x;
+                            const dy = circles[j].y - circles[i].y;
+                            const angle = Math.atan2(dy, dx);
+                            
+                            const speed1 = Math.sqrt(circles[i].vx ** 2 + circles[i].vy ** 2);
+                            const speed2 = Math.sqrt(circles[j].vx ** 2 + circles[j].vy ** 2);
+                            
+                            circles[i].vx = -Math.cos(angle) * speed1;
+                            circles[i].vy = -Math.sin(angle) * speed1;
+                            circles[j].vx = Math.cos(angle) * speed2;
+                            circles[j].vy = Math.sin(angle) * speed2;
 
-                        const overlap = circles[i].radius + circles[j].radius - Math.sqrt(dx * dx + dy * dy);
-                        circles[i].x -= Math.cos(angle) * overlap / 2;
-                        circles[i].y -= Math.sin(angle) * overlap / 2;
-                        circles[j].x += Math.cos(angle) * overlap / 2;
-                        circles[j].y += Math.sin(angle) * overlap / 2;
+                            const overlap = circles[i].radius + circles[j].radius - Math.sqrt(dx * dx + dy * dy);
+                            circles[i].x -= Math.cos(angle) * overlap / 2;
+                            circles[i].y -= Math.sin(angle) * overlap / 2;
+                            circles[j].x += Math.cos(angle) * overlap / 2;
+                            circles[j].y += Math.sin(angle) * overlap / 2;
+                        }
                     }
                 }
             }
@@ -520,10 +590,10 @@
         setInterval(updateDateTime, 1000);
         updateDateTime();
 
-        // Fetch leaderboard from server every 2 seconds
+        // Fetch leaderboard from server every 1 second
         setInterval(() => {
             fetchLeaderboard().then(updateLeaderboard);
-        }, 2000);
+        }, 1000);
 
         // Preload images and start
         Promise.all([
@@ -535,6 +605,9 @@
             updateLeaderboard();
             animate();
         });
+
+        // Expose for modal button
+        window.continueGame = continueGame;
     </script>
 </body>
 </html>
